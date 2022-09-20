@@ -1,0 +1,137 @@
+
+# Basic Config
+
+#Designed for the Martin Jerry S01 switch. 
+#As of 09/2022, they now sell ones with an ESP12 built in with Tasmota. The older non-Tasmota ones can have their chip removed and a ESP8266 ESP-12E soldered in.
+#https://www.amazon.com/gp/product/B0B7WC3LF2/
+
+#This config is designed to keep the relay on, and the push button will turn on Bluetooth or other lights based on the button press. The relay does not toggle normally. 
+#If the ESP looses connection with the MQTT server, it will go into override/backup and toggle the relay with each button press. My Sengled Zigbee Smart Light Bulbs will function like a normal light when power cycled. So this makes the lights work like normal if the MQTT server is down. 
+#When the MQTT server is restored, a button press will turn on the relay and keep it on. 
+
+#The LEDs don't follow anything and can be controlled by some other automation. 
+
+
+---
+substitutions:
+  #   # https://esphome.io/guides/configuration-types.html#substitutions
+  device_name: living-room-switch-n # hostname & entity_id
+  friendly_name: Living Room Switch North # Displayed in HA frontend
+
+esphome:
+  # https://esphome.io/components/esphome
+  name: ${device_name}
+
+esp8266:
+  board: esp12e
+  restore_from_flash: true
+
+wifi:
+  ssid: "ESSID"
+  password: "PASSWORD"
+  domain: .domain.net #This allows flashing based on DNS name. 
+  ap:
+    ssid: ${friendly_name}_AP
+    password: "dxiS1MrdjdGJ"
+    channel: 1
+    manual_ip:
+      static_ip: 192.168.1.1
+      gateway: 192.168.1.1
+      subnet: 255.255.255.0
+
+web_server:
+  port: 80
+  # https://esphome.io/components/web_server.html
+
+logger:
+  # https://esphome.io/components/logger
+
+syslog:
+    ip_address: "192.168.1.100"
+    port: 514
+
+mqtt:
+  broker: 192.168.1.100
+
+ota:
+
+
+switch:
+  # relay output
+  - platform: gpio
+    id: relay
+    name: $friendly_name Relay
+    pin: GPIO12
+    restore_mode: RESTORE_DEFAULT_ON
+
+
+output:
+  - platform: gpio
+    pin: GPIO04
+    id: red_led
+    inverted: true
+
+  - platform: gpio
+    pin: GPIO05
+    id: blue_led
+    inverted: true
+
+#Control the LED based on MQTT, not the switch status. 
+light:
+  - platform: binary
+    name: $friendly_name Red LED
+    output: red_led
+
+  - platform: binary
+    name: $friendly_name Blue LED
+    output: blue_led
+
+
+binary_sensor:  
+  - platform: gpio
+    pin:
+      number: GPIO13
+      mode: INPUT_PULLUP
+      inverted: true
+    name: ${friendly_name} Main Button
+    #Override if MQTT connection fails. The ESP chip will auto reboot every 15 minutes by default, but at least this will make something work.
+    on_press:
+      if:
+        condition:
+          not:
+            mqtt.connected:
+        then:
+          - switch.toggle: relay #if we are not connected to the MQTT server, toggle the switch with each button press. 
+        else:
+          - switch.turn_on: relay #If we are connected to the MQTT server, the relay should be always on. 
+
+
+
+button:
+  - platform: restart
+    id: restart_button
+    name: $friendly_name Restart
+    entity_category: diagnostic
+
+
+text_sensor:
+  - platform: version
+    name: $friendly_name ESPHome Version
+    id: esphome_version
+    hide_timestamp: True
+  - platform: wifi_info
+    ip_address:
+      id: ip_address
+      name: $friendly_name IP Address
+    mac_address:
+      name: $friendly_name Mac
+      id: mac_address
+
+sensor:
+  - platform: uptime
+    name: $friendly_name Uptime Sensor
+  - platform: wifi_signal
+    name: $friendly_name wifi signal
+
+
+
